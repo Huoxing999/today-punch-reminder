@@ -22,8 +22,9 @@ class DatabaseHelper {
     final path = join(directory.path, 'reminders.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -38,7 +39,10 @@ class DatabaseHelper {
         isEnabled INTEGER,
         soundPath TEXT,
         type INTEGER,
-        customDate INTEGER
+        customDate INTEGER,
+        itemType INTEGER DEFAULT 0,
+        isCompleted INTEGER DEFAULT 0,
+        dueDate INTEGER
       )
     ''');
 
@@ -50,6 +54,14 @@ class DatabaseHelper {
         FOREIGN KEY (reminderId) REFERENCES reminders(id)
       )
     ''');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE reminders ADD COLUMN itemType INTEGER DEFAULT 0');
+      await db.execute('ALTER TABLE reminders ADD COLUMN isCompleted INTEGER DEFAULT 0');
+      await db.execute('ALTER TABLE reminders ADD COLUMN dueDate INTEGER');
+    }
   }
 
   Future<int> insertReminder(Reminder reminder) async {
@@ -73,6 +85,16 @@ class DatabaseHelper {
       reminder.toMap(),
       where: 'id = ?',
       whereArgs: [reminder.id],
+    );
+  }
+
+  Future<int> markAsCompleted(int id, bool completed) async {
+    final db = await database;
+    return await db.update(
+      'reminders',
+      {'isCompleted': completed ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
     );
   }
 

@@ -6,8 +6,9 @@ import '../services/reminder_service.dart';
 
 class AddReminderScreen extends StatefulWidget {
   final Reminder? existingReminder;
+  final ItemType? initialType;
 
-  const AddReminderScreen({Key? key, this.existingReminder}) : super(key: key);
+  const AddReminderScreen({Key? key, this.existingReminder, this.initialType}) : super(key: key);
 
   @override
   State<AddReminderScreen> createState() => _AddReminderScreenState();
@@ -18,10 +19,12 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final TextEditingController _nameController = TextEditingController();
 
+  ItemType _itemType = ItemType.reminder;
   TimeOfDay? _selectedTime;
   ReminderType _selectedType = ReminderType.daily;
   List<int> _selectedDays = [1, 2, 3, 4, 5, 6, 7];
   DateTime? _selectedDate;
+  DateTime? _todoDueDate;
   bool _isEnabled = true;
   final List<String> _availableSounds = [
     'assets/sounds/reminder.mp3',
@@ -29,10 +32,12 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   String? _selectedSound;
 
   bool get _isEditMode => widget.existingReminder != null;
+  bool get _isTodo => _itemType == ItemType.todo;
 
   @override
   void initState() {
     super.initState();
+    _itemType = widget.initialType ?? ItemType.reminder;
     _selectedSound = _availableSounds[0];
     _loadExistingReminder();
   }
@@ -41,6 +46,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     final reminder = widget.existingReminder;
     if (reminder == null) return;
 
+    _itemType = reminder.itemType;
     _nameController.text = reminder.name;
     _selectedTime = TimeOfDay(
       hour: reminder.time.hour,
@@ -49,6 +55,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     _selectedType = reminder.type;
     _selectedDays = List<int>.from(reminder.days);
     _selectedDate = reminder.customDate;
+    _todoDueDate = reminder.dueDate;
     _isEnabled = reminder.isEnabled;
     _selectedSound = reminder.soundPath;
   }
@@ -142,6 +149,20 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     }
   }
 
+  Future<void> _selectTodoDueDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _todoDueDate ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null) {
+      setState(() {
+        _todoDueDate = picked;
+      });
+    }
+  }
+
   Future<void> _testSound() async {
     try {
       await ReminderService().testSound();
@@ -158,21 +179,28 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   }
 
   Future<void> _saveReminder() async {
-    if (_nameController.text.isEmpty || _selectedTime == null) {
+    if (_nameController.text.trim().isEmpty || _selectedTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写提醒名称和时间')),
+        SnackBar(content: Text(_isTodo ? '请填写待办事项和时间' : '请填写提醒名称和时间')),
       );
       return;
     }
 
-    if (_selectedType == ReminderType.specificDate && _selectedDate == null) {
+    if (_isTodo && _todoDueDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请选择待办日期')),
+      );
+      return;
+    }
+
+    if (!_isTodo && _selectedType == ReminderType.specificDate && _selectedDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请选择指定日期')),
       );
       return;
     }
 
-    if (_selectedType == ReminderType.custom && _selectedDays.isEmpty) {
+    if (!_isTodo && _selectedType == ReminderType.custom && _selectedDays.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('自定义提醒至少选择一天')),
       );
@@ -183,13 +211,18 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
       id: widget.existingReminder?.id ?? 0,
       name: _nameController.text.trim(),
       time: TimeSetting(_selectedTime!.hour, _selectedTime!.minute),
-      days: _selectedType == ReminderType.weekdays
-          ? [1, 2, 3, 4, 5]
-          : List<int>.from(_selectedDays),
+      days: _isTodo
+          ? [1, 2, 3, 4, 5, 6, 7]
+          : _selectedType == ReminderType.weekdays
+              ? [1, 2, 3, 4, 5]
+              : List<int>.from(_selectedDays),
       isEnabled: _isEnabled,
       soundPath: _selectedSound!,
-      type: _selectedType,
-      customDate: _selectedType == ReminderType.specificDate ? _selectedDate : null,
+      type: _isTodo ? ReminderType.daily : _selectedType,
+      customDate: !_isTodo && _selectedType == ReminderType.specificDate ? _selectedDate : null,
+      itemType: _itemType,
+      isCompleted: widget.existingReminder?.isCompleted ?? false,
+      dueDate: _isTodo ? _todoDueDate : null,
     );
 
     try {
@@ -210,11 +243,14 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
           soundPath: reminder.soundPath,
           type: reminder.type,
           customDate: reminder.customDate,
+          itemType: reminder.itemType,
+          isCompleted: reminder.isCompleted,
+          dueDate: reminder.dueDate,
         );
         if (mounted) {
           Navigator.pop(context, true);
         }
-        if (createdReminder.isEnabled) {
+        if (createdReminder.isEnabled && !createdReminder.isCompleted) {
           ReminderService().scheduleReminderInBackground(createdReminder);
         }
       }
@@ -227,8 +263,50 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     }
   }
 
-  Widget _buildPresetSection() {
+  Widget _buildItemTypeSelector() {
     if (_isEditMode) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '添加类型',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        SegmentedButton<ItemType>(
+          segments: const [
+            ButtonSegment(
+              value: ItemType.reminder,
+              icon: Icon(Icons.alarm),
+              label: Text('打卡提醒'),
+            ),
+            ButtonSegment(
+              value: ItemType.todo,
+              icon: Icon(Icons.check_box_outlined),
+              label: Text('待办事项'),
+            ),
+          ],
+          selected: {_itemType},
+          onSelectionChanged: (selected) {
+            setState(() {
+              _itemType = selected.first;
+              if (_itemType == ItemType.todo) {
+                _selectedDate = null;
+                _selectedType = ReminderType.daily;
+                _selectedDays = [1, 2, 3, 4, 5, 6, 7];
+                _todoDueDate ??= DateTime.now();
+              }
+            });
+          },
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildPresetSection() {
+    if (_isEditMode || _isTodo) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -263,7 +341,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   }
 
   Widget _buildDaySelector() {
-    if (_selectedType != ReminderType.custom) return const SizedBox.shrink();
+    if (_isTodo || _selectedType != ReminderType.custom) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,7 +376,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   }
 
   Widget _buildDateSelector() {
-    if (_selectedType != ReminderType.specificDate) return const SizedBox.shrink();
+    if (_isTodo || _selectedType != ReminderType.specificDate) return const SizedBox.shrink();
 
     return Column(
       children: [
@@ -320,11 +398,34 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     );
   }
 
+  Widget _buildTodoDateSelector() {
+    if (!_isTodo) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            const Text('待办日期: '),
+            TextButton(
+              onPressed: () => _selectTodoDueDate(context),
+              child: Text(
+                _todoDueDate == null
+                    ? '选择日期'
+                    : '${_todoDueDate!.year}-${_todoDueDate!.month.toString().padLeft(2, '0')}-${_todoDueDate!.day.toString().padLeft(2, '0')}',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditMode ? '编辑提醒' : '添加提醒'),
+        title: Text(_isEditMode ? (_isTodo ? '编辑待办事项' : '编辑提醒') : '添加'),
         actions: [
           IconButton(
             icon: const Icon(Icons.save),
@@ -340,24 +441,26 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _buildItemTypeSelector(),
                 _buildPresetSection(),
                 TextFormField(
                   controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: '提醒名称',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _isTodo ? '待办事项' : '提醒名称',
+                    border: const OutlineInputBorder(),
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return '请输入提醒名称';
+                      return _isTodo ? '请输入待办事项' : '请输入提醒名称';
                     }
                     return null;
                   },
                 ),
                 const SizedBox(height: 16),
+                _buildTodoDateSelector(),
                 Row(
                   children: [
-                    const Text('时间: '),
+                    Text(_isTodo ? '待办时间: ' : '时间: '),
                     TextButton(
                       onPressed: () => _selectTime(context),
                       child: Text(
@@ -369,53 +472,55 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                const Text('提醒类型:'),
-                RadioListTile<ReminderType>(
-                  title: const Text('每天'),
-                  value: ReminderType.daily,
-                  groupValue: _selectedType,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedType = value!;
-                    });
-                  },
-                ),
-                RadioListTile<ReminderType>(
-                  title: const Text('工作日'),
-                  value: ReminderType.weekdays,
-                  groupValue: _selectedType,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedType = value!;
-                      _selectedDays = [1, 2, 3, 4, 5];
-                    });
-                  },
-                ),
-                RadioListTile<ReminderType>(
-                  title: const Text('自定义'),
-                  value: ReminderType.custom,
-                  groupValue: _selectedType,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedType = value!;
-                    });
-                  },
-                ),
-                RadioListTile<ReminderType>(
-                  title: const Text('指定日期'),
-                  value: ReminderType.specificDate,
-                  groupValue: _selectedType,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedType = value!;
-                    });
-                  },
-                ),
-                _buildDaySelector(),
-                _buildDateSelector(),
+                if (!_isTodo) ...[
+                  const Text('提醒类型:'),
+                  RadioListTile<ReminderType>(
+                    title: const Text('每天'),
+                    value: ReminderType.daily,
+                    groupValue: _selectedType,
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedType = value!;
+                      });
+                    },
+                  ),
+                  RadioListTile<ReminderType>(
+                    title: const Text('工作日'),
+                    value: ReminderType.weekdays,
+                    groupValue: _selectedType,
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedType = value!;
+                        _selectedDays = [1, 2, 3, 4, 5];
+                      });
+                    },
+                  ),
+                  RadioListTile<ReminderType>(
+                    title: const Text('自定义'),
+                    value: ReminderType.custom,
+                    groupValue: _selectedType,
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedType = value!;
+                      });
+                    },
+                  ),
+                  RadioListTile<ReminderType>(
+                    title: const Text('指定日期'),
+                    value: ReminderType.specificDate,
+                    groupValue: _selectedType,
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedType = value!;
+                      });
+                    },
+                  ),
+                  _buildDaySelector(),
+                  _buildDateSelector(),
+                ],
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('启用提醒'),
+                  title: Text(_isTodo ? '启用待办提醒' : '启用提醒'),
                   value: _isEnabled,
                   onChanged: (value) {
                     setState(() {

@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
@@ -50,6 +51,7 @@ class MainActivity : FlutterActivity() {
                 "getExactAlarmDetail" -> result.success(getExactAlarmDetail())
                 "canUseFullScreenIntent" -> result.success(canUseFullScreenIntent())
                 "isNotificationPermissionGranted" -> result.success(isNotificationPermissionGranted())
+                "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
                 "startForegroundService" -> {
                     startForegroundService()
                     result.success(true)
@@ -88,6 +90,11 @@ class MainActivity : FlutterActivity() {
             this,
             android.Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return powerManager.isIgnoringBatteryOptimizations(packageName)
     }
 
     private fun getExactAlarmDetail(): String {

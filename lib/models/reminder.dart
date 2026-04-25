@@ -7,6 +7,9 @@ class Reminder {
   final String soundPath;
   final ReminderType type;
   final DateTime? customDate;
+  final ItemType itemType;
+  final bool isCompleted;
+  final DateTime? dueDate;
 
   Reminder({
     required this.id,
@@ -17,6 +20,9 @@ class Reminder {
     required this.soundPath,
     required this.type,
     this.customDate,
+    this.itemType = ItemType.reminder,
+    this.isCompleted = false,
+    this.dueDate,
   });
 
   Map<String, dynamic> toMap() {
@@ -30,20 +36,29 @@ class Reminder {
       'soundPath': soundPath,
       'type': type.index,
       'customDate': customDate?.millisecondsSinceEpoch,
+      'itemType': itemType.index,
+      'isCompleted': isCompleted ? 1 : 0,
+      'dueDate': dueDate?.millisecondsSinceEpoch,
     };
   }
 
   factory Reminder.fromMap(Map<String, dynamic> map) {
+    final daysText = (map['days'] ?? '').toString();
     return Reminder(
       id: map['id'],
       name: map['name'],
       time: TimeSetting(map['hour'], map['minute']),
-      days: map['days'].toString().split(',').map(int.parse).toList(),
+      days: daysText.isEmpty ? <int>[] : daysText.split(',').map(int.parse).toList(),
       isEnabled: map['isEnabled'] == 1,
       soundPath: map['soundPath'],
       type: ReminderType.values[map['type']],
       customDate: map['customDate'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['customDate'])
+          : null,
+      itemType: ItemType.values[map['itemType'] ?? 0],
+      isCompleted: (map['isCompleted'] ?? 0) == 1,
+      dueDate: map['dueDate'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['dueDate'])
           : null,
     );
   }
@@ -61,4 +76,9 @@ enum ReminderType {
   weekdays,
   custom,
   specificDate,
+}
+
+enum ItemType {
+  reminder,
+  todo,
 }

@@ -162,6 +162,17 @@ class ReminderService {
     }
   }
 
+  Future<bool> isIgnoringBatteryOptimizations() async {
+    try {
+      final result = await _alarmPermissionChannel.invokeMethod<bool>(
+        'isIgnoringBatteryOptimizations',
+      );
+      return result ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
   Future<void> startForegroundService() async {
     try {
       await _alarmPermissionChannel.invokeMethod('startForegroundService');
@@ -205,7 +216,7 @@ class ReminderService {
     final reminders = await DatabaseHelper().getReminders();
     await flutterLocalNotificationsPlugin.cancelAll();
     for (final reminder in reminders) {
-      if (reminder.isEnabled) {
+      if (reminder.isEnabled && !reminder.isCompleted) {
         await scheduleReminder(reminder);
       }
     }
@@ -215,6 +226,12 @@ class ReminderService {
     await initialize(reschedule: false);
     await _createNotificationChannel();
     await cancelReminder(reminder.id);
+
+    if (reminder.itemType == ItemType.todo) {
+      await _scheduleTodo(reminder);
+      return;
+    }
+
     final occurrences = _buildOccurrences(reminder);
     final now = DateTime.now();
 
@@ -253,6 +270,35 @@ class ReminderService {
     }
   }
 
+  Future<void> _scheduleTodo(Reminder reminder) async {
+    if (reminder.isCompleted || reminder.dueDate == null) return;
+
+    final now = DateTime.now();
+    final scheduled = DateTime(
+      reminder.dueDate!.year,
+      reminder.dueDate!.month,
+      reminder.dueDate!.day,
+      reminder.time.hour,
+      reminder.time.minute,
+    );
+    final delaySeconds = scheduled.difference(now).inSeconds;
+    if (delaySeconds <= 0) return;
+
+    try {
+      await flutterLocalNotificationsPlugin.schedule(
+        _todoNotificationId(reminder.id),
+        '待办事项提醒',
+        '${reminder.name} - 到时间了，请完成事项',
+        now.add(Duration(seconds: delaySeconds)),
+        _notificationDetails,
+        payload: _todoNotificationId(reminder.id).toString(),
+        androidAllowWhileIdle: true,
+      );
+    } catch (e) {
+      // 单条通知失败不影响其他通知继续排程
+    }
+  }
+
   void scheduleReminderInBackground(Reminder reminder) {
     unawaited(scheduleReminder(reminder));
   }
@@ -263,13 +309,14 @@ class ReminderService {
 
   Future<void> _rescheduleReminder(Reminder reminder) async {
     await cancelReminder(reminder.id);
-    if (reminder.isEnabled) {
+    if (reminder.isEnabled && !reminder.isCompleted) {
       await scheduleReminder(reminder);
     }
   }
 
   Future<void> cancelReminder(int reminderId) async {
     await initialize(reschedule: false);
+    await flutterLocalNotificationsPlugin.cancel(_todoNotificationId(reminderId));
     for (var occurrenceIndex = 0;
         occurrenceIndex < _daysToSchedule;
         occurrenceIndex++) {
@@ -342,6 +389,10 @@ class ReminderService {
     return reminderId * 1000 + occurrenceIndex * 100 + repeatIndex;
   }
 
+  int _todoNotificationId(int reminderId) {
+    return reminderId * 1000 + 999;
+  }
+
   int _reminderIdFromNotificationId(int notificationId) {
     return notificationId ~/ 1000;
   }
@@ -355,6 +406,7 @@ class ReminderService {
     for (var repeatIndex = 0; repeatIndex <= _repeatCount; repeatIndex++) {
       await flutterLocalNotificationsPlugin.cancel(occurrenceBase + repeatIndex);
     }
+    await flutterLocalNotificationsPlugin.cancel(_currentNotificationId!);
   }
 
   NotificationDetails get _notificationDetails {
@@ -396,7 +448,11 @@ class ReminderService {
   Future<void> startRepeatingReminder(Reminder reminder) async {
     _currentActiveReminder = reminder;
     _isPlaying = true;
-    await showNotification('打卡提醒', '${reminder.name} - 请打卡！', reminder.id);
+    await showNotification(
+      reminder.itemType == ItemType.todo ? '待办事项提醒' : '打卡提醒',
+      reminder.itemType == ItemType.todo ? '${reminder.name} - 到时间了，请完成事项' : '${reminder.name} - 请打卡！',
+      reminder.id,
+    );
   }
 
   Future<void> dismissReminder() async {

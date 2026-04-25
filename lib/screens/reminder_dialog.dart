@@ -24,6 +24,7 @@ class _ReminderDialogState extends State<ReminderDialog> {
   Widget build(BuildContext context) {
     final timeText =
         '${widget.reminder.time.hour.toString().padLeft(2, '0')}:${widget.reminder.time.minute.toString().padLeft(2, '0')}';
+    final isTodo = widget.reminder.itemType == ItemType.todo;
 
     return PopScope(
       canPop: false,
@@ -36,8 +37,8 @@ class _ReminderDialogState extends State<ReminderDialog> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Spacer(),
-                const Icon(
-                  Icons.alarm,
+                Icon(
+                  isTodo ? Icons.check_box_outlined : Icons.alarm,
                   color: Colors.white,
                   size: 72,
                 ),
@@ -62,24 +63,24 @@ class _ReminderDialogState extends State<ReminderDialog> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  '请立即处理本次打卡提醒',
+                Text(
+                  isTodo ? '请处理本次待办事项' : '请立即处理本次打卡提醒',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 16,
                   ),
                 ),
                 const Spacer(),
                 FilledButton(
-                  onPressed: _processing ? null : _onPunch,
+                  onPressed: _processing ? null : (isTodo ? _onCompleteTodo : _onPunch),
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.green,
                     padding: const EdgeInsets.symmetric(vertical: 18),
                   ),
-                  child: const Text(
-                    '立即打卡',
-                    style: TextStyle(fontSize: 20),
+                  child: Text(
+                    isTodo ? '标记完成' : '立即打卡',
+                    style: const TextStyle(fontSize: 20),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -90,9 +91,9 @@ class _ReminderDialogState extends State<ReminderDialog> {
                     side: const BorderSide(color: Colors.white30),
                     padding: const EdgeInsets.symmetric(vertical: 18),
                   ),
-                  child: const Text(
-                    '关闭本轮提醒',
-                    style: TextStyle(fontSize: 18),
+                  child: Text(
+                    isTodo ? '稍后处理' : '关闭本轮提醒',
+                    style: const TextStyle(fontSize: 18),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -111,6 +112,19 @@ class _ReminderDialogState extends State<ReminderDialog> {
     await widget.reminderService.dismissReminder();
     if (!mounted) return;
     Navigator.of(context).pop();
+  }
+
+  Future<void> _onCompleteTodo() async {
+    setState(() {
+      _processing = true;
+    });
+    await DatabaseHelper().markAsCompleted(widget.reminder.id, true);
+    await widget.reminderService.dismissReminder();
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('待办事项已完成！')),
+    );
   }
 
   Future<void> _onPunch() async {

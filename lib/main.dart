@@ -62,16 +62,15 @@ class _MyHomePageState extends State<MyHomePage> {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final ReminderService _reminderService = ReminderService();
   bool _alarmPageOpen = false;
-
-  static const List<Widget> _widgetOptions = <Widget>[
-    ReminderListScreen(),
-    SettingsScreen(),
-  ];
+  final GlobalKey<ReminderListScreenState> _listKey = GlobalKey<ReminderListScreenState>();
 
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
+    if (index == 0) {
+      _listKey.currentState?.refresh();
+    }
   }
 
   @override
@@ -173,6 +172,7 @@ class _MyHomePageState extends State<MyHomePage> {
     )
         .then((_) {
       _alarmPageOpen = false;
+      _listKey.currentState?.refresh();
     });
   }
 
@@ -188,7 +188,13 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         title: const Text('今天你打了吗'),
       ),
-      body: _widgetOptions.elementAt(_selectedIndex),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          ReminderListScreen(key: _listKey),
+          const SettingsScreen(),
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
@@ -219,6 +225,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   bool? _notificationEnabled;
   bool? _exactAlarmEnabled;
   bool? _fullScreenIntentEnabled;
+  bool? _batteryOptimizationIgnored;
   String _alarmDetail = '';
 
   @override
@@ -246,12 +253,14 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     final notification = await service.isNotificationPermissionGranted();
     final exactAlarm = await service.canScheduleExactAlarms();
     final fullScreen = await service.canUseFullScreenIntent();
+    final battery = await service.isIgnoringBatteryOptimizations();
     final detail = await service.getExactAlarmDetail();
     if (!mounted) return;
     setState(() {
       _notificationEnabled = notification;
       _exactAlarmEnabled = exactAlarm;
       _fullScreenIntentEnabled = fullScreen;
+      _batteryOptimizationIgnored = battery;
       _alarmDetail = detail;
     });
   }
@@ -310,15 +319,21 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             _buildPermissionStatus(
               icon: Icons.battery_saver,
               title: '电池优化',
-              subtitle: '关闭电池优化可防止系统杀掉后台服务',
+              subtitle: _batteryOptimizationIgnored == null
+                  ? '检查中…'
+                  : _batteryOptimizationIgnored!
+                      ? '已关闭电池优化 — 后台服务正常运行'
+                      : '未关闭 — 可能导致后台提醒被系统杀掉',
+              isEnabled: _batteryOptimizationIgnored,
               onTap: _openBatteryOptimizationSettings,
-              buttonText: '去设置',
+              buttonText: _batteryOptimizationIgnored == true ? '已关闭' : '去设置',
             ),
             const SizedBox(height: 8),
             _buildPermissionStatus(
               icon: Icons.power_settings_new,
               title: '自启动',
-              subtitle: '允许 app 在后台自动启动',
+              subtitle: '部分手机需要手动允许自启动（无法自动检测）',
+              isEnabled: null,
               onTap: _openAutoStartSettings,
               buttonText: '去设置',
             ),
