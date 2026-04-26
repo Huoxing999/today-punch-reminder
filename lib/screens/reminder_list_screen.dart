@@ -39,15 +39,23 @@ class ReminderListScreenState extends State<ReminderListScreen> with WidgetsBind
   Future<void> _loadReminders() async {
     final reminders = await _dbHelper.getReminders();
     reminders.sort((a, b) {
-      if (a.itemType == ItemType.todo && b.itemType == ItemType.todo) {
-        if (a.isCompleted != b.isCompleted) {
-          return a.isCompleted ? 1 : -1;
-        }
-        return _todoDateTime(a).compareTo(_todoDateTime(b));
+      // 已完成的排最后
+      if (a.isCompleted != b.isCompleted) {
+        return a.isCompleted ? 1 : -1;
       }
-      if (a.itemType == ItemType.todo && !a.isCompleted) return -1;
-      if (b.itemType == ItemType.todo && !b.isCompleted) return 1;
-      return a.id.compareTo(b.id);
+      // 都是未完成：待办事项优先
+      if (a.itemType != b.itemType) {
+        return a.itemType == ItemType.todo ? -1 : 1;
+      }
+      // 同类型内：先按日期排，再按时间排
+      final aDate = a.dueDate ?? DateTime(2000);
+      final bDate = b.dueDate ?? DateTime(2000);
+      final aDateVal = aDate.year * 10000 + aDate.month * 100 + aDate.day;
+      final bDateVal = bDate.year * 10000 + bDate.month * 100 + bDate.day;
+      if (aDateVal != bDateVal) return aDateVal.compareTo(bDateVal);
+      final aMinutes = a.time.hour * 60 + a.time.minute;
+      final bMinutes = b.time.hour * 60 + b.time.minute;
+      return aMinutes.compareTo(bMinutes);
     });
     if (mounted) {
       setState(() {
