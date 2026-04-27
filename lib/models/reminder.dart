@@ -9,6 +9,7 @@ class Reminder {
   final DateTime? customDate;
   final ItemType itemType;
   final bool isCompleted;
+  final DateTime? completedDate;
   final DateTime? dueDate;
 
   Reminder({
@@ -22,6 +23,7 @@ class Reminder {
     this.customDate,
     this.itemType = ItemType.reminder,
     this.isCompleted = false,
+    this.completedDate,
     this.dueDate,
   });
 
@@ -38,6 +40,7 @@ class Reminder {
       'customDate': customDate?.millisecondsSinceEpoch,
       'itemType': itemType.index,
       'isCompleted': isCompleted ? 1 : 0,
+      'completedDate': completedDate?.millisecondsSinceEpoch,
       'dueDate': dueDate?.millisecondsSinceEpoch,
     };
   }
@@ -57,6 +60,9 @@ class Reminder {
           : null,
       itemType: ItemType.values[map['itemType'] ?? 0],
       isCompleted: (map['isCompleted'] ?? 0) == 1,
+      completedDate: map['completedDate'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['completedDate'])
+          : null,
       dueDate: map['dueDate'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['dueDate'])
           : null,

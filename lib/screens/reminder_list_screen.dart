@@ -38,7 +38,26 @@ class ReminderListScreenState extends State<ReminderListScreen> with WidgetsBind
 
   Future<void> _loadReminders() async {
     final reminders = await _dbHelper.getReminders();
-    reminders.sort((a, b) {
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+
+    // 自动重置：重复类型的待办事项，完成日期不是今天则重置为未完成
+    for (final r in reminders) {
+      if (r.itemType == ItemType.todo &&
+          r.isCompleted &&
+          r.type != ReminderType.specificDate &&
+          r.completedDate != null) {
+        final completedDate = r.completedDate!;
+        final completedDay = DateTime(completedDate.year, completedDate.month, completedDate.day);
+        if (completedDay.isBefore(todayDate)) {
+          await _dbHelper.markAsCompleted(r.id, false);
+        }
+      }
+    }
+
+    // 重新加载已更新的数据
+    final updatedReminders = await _dbHelper.getReminders();
+    updatedReminders.sort((a, b) {
       // 已完成的排最后
       if (a.isCompleted != b.isCompleted) {
         return a.isCompleted ? 1 : -1;
@@ -59,7 +78,7 @@ class ReminderListScreenState extends State<ReminderListScreen> with WidgetsBind
     });
     if (mounted) {
       setState(() {
-        _reminders = reminders;
+        _reminders = updatedReminders;
       });
     }
   }

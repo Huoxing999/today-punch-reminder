@@ -22,7 +22,7 @@ class DatabaseHelper {
     final path = join(directory.path, 'reminders.db');
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -42,6 +42,7 @@ class DatabaseHelper {
         customDate INTEGER,
         itemType INTEGER DEFAULT 0,
         isCompleted INTEGER DEFAULT 0,
+        completedDate INTEGER,
         dueDate INTEGER
       )
     ''');
@@ -61,6 +62,9 @@ class DatabaseHelper {
       await db.execute('ALTER TABLE reminders ADD COLUMN itemType INTEGER DEFAULT 0');
       await db.execute('ALTER TABLE reminders ADD COLUMN isCompleted INTEGER DEFAULT 0');
       await db.execute('ALTER TABLE reminders ADD COLUMN dueDate INTEGER');
+    }
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE reminders ADD COLUMN completedDate INTEGER');
     }
   }
 
@@ -92,7 +96,10 @@ class DatabaseHelper {
     final db = await database;
     return await db.update(
       'reminders',
-      {'isCompleted': completed ? 1 : 0},
+      {
+        'isCompleted': completed ? 1 : 0,
+        'completedDate': completed ? DateTime.now().millisecondsSinceEpoch : null,
+      },
       where: 'id = ?',
       whereArgs: [id],
     );

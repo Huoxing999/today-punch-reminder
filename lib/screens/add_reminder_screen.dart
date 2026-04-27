@@ -38,6 +38,10 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   void initState() {
     super.initState();
     _itemType = widget.initialType ?? ItemType.reminder;
+    if (_itemType == ItemType.todo && widget.existingReminder == null) {
+      _selectedType = ReminderType.specificDate;
+      _todoDueDate = DateTime.now();
+    }
     _selectedSound = _availableSounds[0];
     _loadExistingReminder();
   }
@@ -414,6 +418,37 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     );
   }
 
+  List<Widget> _buildTypeRadioTiles() {
+    final types = _isTodo
+        ? [ReminderType.specificDate, ReminderType.daily, ReminderType.weekdays, ReminderType.custom]
+        : [ReminderType.daily, ReminderType.weekdays, ReminderType.custom, ReminderType.specificDate];
+    final labels = {
+      ReminderType.daily: '每天',
+      ReminderType.weekdays: '工作日',
+      ReminderType.custom: '自定义',
+      ReminderType.specificDate: '指定日期',
+    };
+
+    return types.map((type) {
+      return RadioListTile<ReminderType>(
+        title: Text(labels[type]!),
+        value: type,
+        groupValue: _selectedType,
+        onChanged: (value) {
+          setState(() {
+            _selectedType = value!;
+            if (value == ReminderType.weekdays) {
+              _selectedDays = [1, 2, 3, 4, 5];
+            }
+            if (_isTodo && value == ReminderType.specificDate && _todoDueDate == null) {
+              _todoDueDate = DateTime.now();
+            }
+          });
+        },
+      );
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -466,47 +501,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                 ),
                 const SizedBox(height: 16),
                   Text(_isTodo ? '重复类型:' : '提醒类型:'),
-                  RadioListTile<ReminderType>(
-                    title: const Text('每天'),
-                    value: ReminderType.daily,
-                    groupValue: _selectedType,
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedType = value!;
-                      });
-                    },
-                  ),
-                  RadioListTile<ReminderType>(
-                    title: const Text('工作日'),
-                    value: ReminderType.weekdays,
-                    groupValue: _selectedType,
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedType = value!;
-                        _selectedDays = [1, 2, 3, 4, 5];
-                      });
-                    },
-                  ),
-                  RadioListTile<ReminderType>(
-                    title: const Text('自定义'),
-                    value: ReminderType.custom,
-                    groupValue: _selectedType,
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedType = value!;
-                      });
-                    },
-                  ),
-                  RadioListTile<ReminderType>(
-                    title: const Text('指定日期'),
-                    value: ReminderType.specificDate,
-                    groupValue: _selectedType,
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedType = value!;
-                      });
-                    },
-                  ),
+                  ..._buildTypeRadioTiles(),
                   _buildDaySelector(),
                   _buildDateSelector(),
                 SwitchListTile(
