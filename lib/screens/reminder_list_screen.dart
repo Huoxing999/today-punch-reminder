@@ -45,12 +45,17 @@ class ReminderListScreenState extends State<ReminderListScreen> with WidgetsBind
     for (final r in reminders) {
       if (r.itemType == ItemType.todo &&
           r.isCompleted &&
-          r.type != ReminderType.specificDate &&
-          r.completedDate != null) {
-        final completedDate = r.completedDate!;
-        final completedDay = DateTime(completedDate.year, completedDate.month, completedDate.day);
-        if (completedDay.isBefore(todayDate)) {
+          r.type != ReminderType.specificDate) {
+        // completedDate 为 null（旧数据）或完成日期早于今天 → 重置
+        if (r.completedDate == null) {
           await _dbHelper.markAsCompleted(r.id, false);
+        } else {
+          final completedDay = DateTime(
+            r.completedDate!.year, r.completedDate!.month, r.completedDate!.day,
+          );
+          if (completedDay.isBefore(todayDate)) {
+            await _dbHelper.markAsCompleted(r.id, false);
+          }
         }
       }
     }
