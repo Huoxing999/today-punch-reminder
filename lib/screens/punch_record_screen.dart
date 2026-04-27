@@ -22,6 +22,7 @@ class _PunchRecordScreenState extends State<PunchRecordScreen> {
 
   Future<void> _loadPunchRecords() async {
     final records = await _dbHelper.getPunchRecords(widget.reminderId);
+    records.sort((a, b) => b.compareTo(a));
     setState(() {
       _punchRecords = records;
     });

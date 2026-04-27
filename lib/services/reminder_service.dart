@@ -227,8 +227,8 @@ class ReminderService {
     await _createNotificationChannel();
     await cancelReminder(reminder.id);
 
-    if (reminder.itemType == ItemType.todo) {
-      await _scheduleTodo(reminder);
+    if (reminder.itemType == ItemType.todo && reminder.type == ReminderType.specificDate) {
+      await _scheduleTodoOnce(reminder);
       return;
     }
 
@@ -252,12 +252,17 @@ class ReminderService {
         if (delaySeconds <= 0) continue;
 
         try {
+          final isTodo = reminder.itemType == ItemType.todo;
           await flutterLocalNotificationsPlugin.schedule(
             notificationId,
-            '打卡提醒',
-            repeatIndex == 0
-                ? '${reminder.name} - 请打卡！'
-                : '${reminder.name} - 仍未确认，请尽快打卡！',
+            isTodo ? '待办事项提醒' : '打卡提醒',
+            isTodo
+                ? (repeatIndex == 0
+                    ? '${reminder.name} - 到时间了，请完成事项'
+                    : '${reminder.name} - 仍未完成，请尽快处理')
+                : (repeatIndex == 0
+                    ? '${reminder.name} - 请打卡！'
+                    : '${reminder.name} - 仍未确认，请尽快打卡！'),
             now.add(Duration(seconds: delaySeconds)),
             _notificationDetails,
             payload: notificationId.toString(),
@@ -270,7 +275,7 @@ class ReminderService {
     }
   }
 
-  Future<void> _scheduleTodo(Reminder reminder) async {
+  Future<void> _scheduleTodoOnce(Reminder reminder) async {
     if (reminder.isCompleted || reminder.dueDate == null) return;
 
     final now = DateTime.now();

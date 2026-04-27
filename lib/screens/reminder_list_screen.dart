@@ -101,7 +101,22 @@ class ReminderListScreenState extends State<ReminderListScreen> with WidgetsBind
     _loadReminders();
   }
 
-  Future<void> _deleteReminder(int id) async {
+  Future<void> _deleteReminder(int id, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除「$name」吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     await _dbHelper.deleteReminder(id);
     setState(() {
       _reminders = _reminders.where((reminder) => reminder.id != id).toList();
@@ -267,7 +282,7 @@ class ReminderListScreenState extends State<ReminderListScreen> with WidgetsBind
             ),
             IconButton(
               icon: const Icon(Icons.delete),
-              onPressed: () => _deleteReminder(reminder.id),
+              onPressed: () => _deleteReminder(reminder.id, reminder.name),
             ),
           ],
         ),
@@ -277,9 +292,8 @@ class ReminderListScreenState extends State<ReminderListScreen> with WidgetsBind
   }
 
   Widget _buildTodoCard(Reminder reminder) {
-    final dueDate = reminder.dueDate;
     final timeText = '${reminder.time.hour.toString().padLeft(2, '0')}:${reminder.time.minute.toString().padLeft(2, '0')}';
-    final subtitle = dueDate == null ? timeText : '${_formatDate(dueDate)} $timeText';
+    final typeText = _getSubtitle(reminder);
     final textColor = reminder.isCompleted ? Colors.grey : null;
 
     return Card(
@@ -299,12 +313,12 @@ class ReminderListScreenState extends State<ReminderListScreen> with WidgetsBind
           ),
         ),
         subtitle: Text(
-          '${reminder.isCompleted ? '已完成' : '待办提醒'} · $subtitle · 点击可编辑',
+          '${reminder.isCompleted ? '已完成' : '待办提醒'} · $timeText · $typeText · 点击可编辑',
           style: TextStyle(fontSize: 12, color: reminder.isCompleted ? Colors.grey : Colors.orange[800]),
         ),
         trailing: IconButton(
           icon: const Icon(Icons.delete),
-          onPressed: () => _deleteReminder(reminder.id),
+          onPressed: () => _deleteReminder(reminder.id, reminder.name),
         ),
       ),
     );
