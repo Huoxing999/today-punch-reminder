@@ -60,6 +60,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- 原生闹钟广播接收器：App 被杀死后仍能弹出通知 -->
+        <receiver android:exported="false" android:name=".ReminderAlarmReceiver" />
+        <!-- 服务重启接收器：setAlarmClock 触发，抗强制停止 -->
+        <receiver android:exported="false" android:name=".ReminderRestartReceiver" />
+
         <service
             android:name=".ReminderForegroundService"
             android:exported="false"

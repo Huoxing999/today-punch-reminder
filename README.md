@@ -27,9 +27,11 @@
 
 ### 后台可靠性
 - **前台服务（Foreground Service）**：保持进程常驻，防止系统杀死
-- **自动重启**：App 被从最近任务划掉后，1 秒内自动重启服务
-- **精确闹钟调度**：使用 Android AlarmManager 确保准时触发
+- **原生级闹钟调度（AlarmScheduler）**：前台服务直接读取 SQLite，通过原生 AlarmManager 设置精确闹钟，完全不依赖 Flutter 引擎
+- **setAlarmClock 自动重启**：App 被从最近任务划掉后，使用 `AlarmManager.setAlarmClock()` 安排服务重启（系统级优先级，抗强制停止）
+- **5 分钟重复提醒**：闹钟触发后自动调度下一轮提醒，最多重复 4 次
 - **开机自启**：设备重启后自动恢复所有提醒
+- **双层保障**：Flutter 层（flutter_local_notifications）+ 原生层（AlarmScheduler）同时调度，确保至少一层生效
 
 ### 权限管理
 - **权限状态面板**：实时显示通知、精确闹钟、全屏通知、电池优化等权限状态
@@ -75,8 +77,7 @@ lib/
 android/
 ├── app/src/main/
 │   ├── AndroidManifest.xml      # 权限声明与服务注册
-│   ├── kotlin/.../MainActivity.kt       # 主 Activity + 原生方法
-│   ├── kotlin/.../ReminderForegroundService.kt  # 前台服务
+│   ├── kotlin/.../MainActivity.kt       # 主 Activity + 前台服务 + 原生闹钟调度 + 广播接收器
 │   └── res/                     # 图标、主题、颜色资源
 ```
 
@@ -164,26 +165,38 @@ adb install build/app/outputs/flutter-apk/app-release.apk
 
 ## 工作原理
 
-### 提醒调度
+### 双层提醒调度
 ```
-用户创建提醒 → SQLite 持久化 → 计算未来 7 天的触发时间
-→ 每个时间点生成 5 条通知（间隔 5 分钟）
-→ 通过 flutter_local_notifications 注册到 Android AlarmManager
+Flutter 层（flutter_local_notifications）:
+  用户创建提醒 → SQLite 持久化 → 计算未来 7 天的触发时间
+  → 每个时间点生成 5 条通知（间隔 5 分钟）
+  → 通过 flutter_local_notifications 注册到 Android AlarmManager
+
+原生层（AlarmScheduler）:
+  前台服务启动/重启 → AlarmScheduler.scheduleAll()
+  → 直接读取 SQLite 数据库 → 计算未来 7 天的触发时间
+  → 通过原生 AlarmManager.setExactAndAllowWhileIdle() 设置精确闹钟
+  → ReminderAlarmReceiver 接收闹钟广播 → 显示系统通知
 ```
 
-### 后台保活
+### 后台保活（三层重启机制）
 ```
-App 启动 → 启动 Foreground Service（START_STICKY）
-→ 用户划掉 App → onTaskRemoved() 触发
-→ AlarmManager 延迟 1 秒重启 Service
-→ Service 恢复，继续监听提醒
+第一层：START_STICKY → 系统自动尝试重启服务
+第二层：onTaskRemoved() → setAlarmClock(2秒后)
+       → ReminderRestartReceiver → startForegroundService()
+       （setAlarmClock 为系统级优先级，抗强制停止）
+第三层：onDestroy() → setAlarmClock(2秒后) → 同上
 ```
 
 ### 提醒触发链路
 ```
-AlarmManager 到时 → 系统发送通知 → 用户点击通知
-→ App 拉起 → _handleNotificationSelection()
+Flutter 层：AlarmManager 到时 → flutter_local_notifications 通知
+→ 用户点击 → App 拉起 → _handleNotificationSelection()
 → 弹出全屏 ReminderDialog → 用户处理
+
+原生层：AlarmManager 到时 → ReminderAlarmReceiver
+→ 显示系统通知（fullScreenIntent）→ 用户点击 → 打开 App
+→ 自动调度 5 分钟后重复提醒（最多 4 次）
 ```
 
 ## 常见问题
@@ -199,7 +212,10 @@ A: 请检查以下设置：
 A: 需要开启"全屏通知"权限，在设置页面可以一键跳转到系统设置。
 
 ### Q: 杀掉 App 后提醒失效？
-A: 本 App 已内置前台服务和自动重启机制。如果仍然失效，请检查：
+A: 本 App 已内置三层保活机制（START_STICKY + setAlarmClock + 原生闹钟调度）。
+即使 App 被杀，2 秒内会通过 setAlarmClock 自动重启前台服务，
+服务重启后直接从 SQLite 读取数据并设置原生闹钟，不依赖 Flutter 引擎。
+如果仍然失效，请检查：
 1. 系统是否允许自启动
 2. 电池优化是否已关闭
 3. 部分国产手机需要在系统设置中手动允许后台运行
@@ -216,6 +232,9 @@ A: Android 系统对单个 App 的通知数量有限制（约 500 条）。本 A
 - 前台服务使用 `specialUse` 类型，兼容 Android 14+
 - 时间选择器使用 `CupertinoDatePicker` 替代 Material 弹窗
 - 待办事项与打卡提醒共用 `reminders` 表，通过 `itemType` 字段区分
+- **原生闹钟调度（AlarmScheduler）**：前台服务启动时直接读取 SQLite，通过原生 `AlarmManager` 设置精确闹钟，不依赖 Flutter 引擎
+- **setAlarmClock 重启**：使用 `AlarmManager.setAlarmClock()` 安排服务重启，系统级优先级，抗强制停止
+- **双层保障**：Flutter 层和原生层同时调度，确保至少一层能触发通知
 
 ### 数据库表结构
 ```sql
